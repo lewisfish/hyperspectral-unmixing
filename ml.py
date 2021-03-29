@@ -1,17 +1,21 @@
 from argparse import ArgumentParser
 
+import numpy as np
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch import linalg as LA
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 from torchvision import transforms
 
 import artifical
 import customdata
+import hysime
+import vca
 
 
 class RMSELoss(nn.Module):
@@ -24,6 +28,41 @@ class RMSELoss(nn.Module):
         loss = torch.sqrt(criterion(x, y) + eps)
         return loss
 
+class SADLoss(nn.Module):
+    def __init__(self):
+        super(SADLoss, self).__init__()
+        self.cos = nn.CosineSimilarity(dim=1, eps=1e-8)
+
+    def forward(self, x, y):
+        """
+        cos = nn.CosineSimilarity(dim=1, eps=1e-08)
+        output = cos(input1, input2)
+
+        shape: [batch, bands]
+
+        """
+
+        batch_size = x.size()[0]
+        divisor = self.cos(x, y)
+        output = torch.sum(torch.acos(divisor)) / batch_size
+
+        return output
+
+
+class SIDLoss(nn.Module):
+    def __init__(self):
+        super(SIDLoss, self).__init__()
+
+    def forward(self, x, y):
+        """
+
+        """
+        a = F.kl_div(x.log_softmax(0), y.softmax(0), reduction="sum")  # input needs to be logged, target does not...
+        b = F.kl_div(y.log_softmax(0), x.softmax(0), reduction="sum")
+        output = (a + b) / x.shape[0]
+
+        return output
+
 
 class softReLu(nn.Module):
 
@@ -31,13 +70,13 @@ class softReLu(nn.Module):
         super().__init__()
 
         self.size_in = size_in
-        alphas = torch.Tensor(size_in)
+        alphas = torch.Tensor(size_in).to("cuda:0")
         self.alphas = nn.Parameter(alphas)
-        torch.nn.init.constant_(self.alphas, 1e-7)
+        self.alphas.requires_grad = True
+        torch.nn.init.constant_(self.alphas, 1e-9)
         self.zeros = torch.zeros(size_in, dtype=torch.float32, device="cuda:0")
 
     def forward(self, x):
-        # print(self.alphas)
         return torch.maximum(self.zeros, x - self.alphas)
 
 
@@ -45,10 +84,10 @@ class normIt(nn.Module):
     """docstring for normIt"""
     def __init__(self):
         super(normIt, self).__init__()
+        self.eps = 1e-8
 
     def forward(self, x):
-        for i in range(x.shape[0]):
-            x[i] /= torch.sum(x, axis=1)[i]
+        x = torch.abs(x) / (self.eps + torch.sum(torch.abs(x), dim=1, keepdims=True))
         return x
 
 

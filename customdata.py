@@ -18,6 +18,7 @@ class PaviaUDataset(Dataset):
         shape = self.HCI.shape
         self.HCI = self.HCI.reshape((shape[0] * shape[1], shape[2]))
         self.HCI = self.HCI.astype(np.float32)
+        self.shape = self.HCI.shape
 
         self.transform = transform
 
@@ -42,9 +43,10 @@ class ArtificalDataset(Dataset):
         self.h = img_size[0]
         self.w = img_size[1]
         self.c = img_size[2]
+        self.shape = [self.h*self.w, self.c]
         self.transform = transform
 
-        self.specs, self.images = self.create_data(img_size, target_snr)
+        self.images = self.create_data(img_size, target_snr)
 
     def create_data(self, img_size, target_snr):
 
@@ -61,18 +63,14 @@ class ArtificalDataset(Dataset):
 
         abundance = artifical.create_abundance_map((w, h), "strips", ratios=[1., 1., 1., 1.])
         images, noises = artifical.create_images(abundance, specs, (w, h), target_snr=target_snr, channels=channels, show=False)
-
-        return np.array(specs), images
+        return images
 
     def __len__(self):
-        return self.c
+        return self.shape[0]
 
     def __getitem__(self, idx):
 
-        image = self.images[:, idx]
-        specs = self.specs
-
-        sample = {"image": image, "specs": specs}
+        sample = self.images[idx, :]
 
         if self.transform:
             sample = self.transform(sample)
@@ -84,12 +82,12 @@ class ToTensor(object):
 
     def __call__(self, sample):
 
-        spec, image = sample["specs"], sample["image"]
-
-        return {"image": torch.from_numpy(image),
-                "specs": torch.from_numpy(spec)}
+        return torch.from_numpy(sample)
 
 
 if __name__ == '__main__':
     tmp = ArtificalDataset((24, 25, 18), 20,
                            transform=transforms.Compose([ToTensor()]))
+    loader = DataLoader(tmp)
+    for i in loader:
+        print(i.shape)
