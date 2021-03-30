@@ -15,12 +15,51 @@ class PaviaUDataset(Dataset):
         super(PaviaUDataset, self).__init__()
 
         self.HCI = scipy.io.loadmat(file)["paviaU"]
+        self.gt = scipy.io.loadmat(file[:-4] + "_gt.mat")["paviaU_gt"]
         shape = self.HCI.shape
         self.HCI = self.HCI.reshape((shape[0] * shape[1], shape[2]))
         self.HCI = self.HCI.astype(np.float32)
         self.shape = self.HCI.shape
 
         self.transform = transform
+
+    def __len__(self):
+        return self.HCI.shape[0]
+
+    def __getitem__(self, idx):
+
+        sample = self.HCI[idx, :]
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
+class SamsonDataset(Dataset):
+    """https://rslab.ut.ac.ir/data"""
+    def __init__(self, data_file, gt_file, transform=None):
+        super(SamsonDataset, self).__init__()
+        self.data_file = data_file
+        self.gt_file = gt_file
+        self.transform = transform
+
+        mat = scipy.io.loadmat(self.data_file)
+        self.shape = (mat["nCol"][0][0].astype(np.float32)*mat["nRow"][0][0].astype(np.float32), mat["nBand"][0][0])
+        self.HCI = np.transpose(mat["V"], (1, 0))
+
+        mat = scipy.io.loadmat(self.gt_file)
+
+        # print(mat["cood"])# -> labels
+        # ground truth abundances
+        a = mat["A"][0, :].reshape((95, 95), order="F")
+        b = mat["A"][1, :].reshape((95, 95), order="F")
+        c = mat["A"][2, :].reshape((95, 95), order="F")
+        self.gt_A = np.dstack((a, b, c))
+
+        self.end_members = mat["M"]
+
+        # plt.imshow(np.sum(self.HCI, axis=1).reshape((self.shape[0], self.shape[1]), order="F"))
 
     def __len__(self):
         return self.HCI.shape[0]
