@@ -3,6 +3,15 @@ import torch.nn.functional as F
 from torch import nn
 
 
+class squeeze(nn.Module):
+    """docstring for squeeze"""
+    def __init__(self):
+        super(squeeze, self).__init__()
+
+    def forward(self, x):
+        return x.squeeze(-1)
+
+
 class softReLu(nn.Module):
 
     def __init__(self, size_in):

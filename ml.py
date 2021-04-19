@@ -18,6 +18,30 @@ import models
 def cli_main():
     # torch.autograd.set_detect_anomaly(True)
     pl.seed_everything(1234)
+
+    dataset = customdata.AusData("data/aus_data/D/D230201.mat", pad=False, normalise=True)
+    train_size = int(0.6 * len(dataset))
+    val_size = int(0.2 * len(dataset))
+    test_size = int(0.2 * len(dataset))
+
+    split_sum = train_size + val_size + test_size
+    diff = len(dataset) - split_sum
+    if diff > 0:
+        while True:
+            train_size += 1
+            diff -= 1
+            if diff == 0:
+                break
+            val_size += 1
+            diff -= 1
+            if diff == 0:
+                break
+            test_size += 1
+            diff -= 1
+            if diff == 0:
+                break
+
+    train_set, val_set, test_set = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
     tb_logger = pl_loggers.TensorBoardLogger('logs/')
     trainer = pl.Trainer(logger=tb_logger, gpus=1, auto_select_gpus=True, max_epochs=50)
     dataset = customdata.SamsonDataset("sample_data/samson/samson_1.mat", "sample_data/samson/end3.mat", transform=transforms.Compose([customdata.ToTensor()]))
