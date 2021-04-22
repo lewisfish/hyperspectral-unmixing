@@ -3,6 +3,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io
+from skimage import io
+from skimage.transform import resize
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -11,50 +13,46 @@ import artifical
 import utils
 
 
-class AusData(Dataset):
-    """docstring for AusData"""
-    def __init__(self, file, pad=False, pad_size=500, normalise=False, transform=None):
-        super(AusData, self).__init__()
-        self.file = file
+class AusDataImg(Dataset):
+    """docstring for AusDataImg"""
+    def __init__(self, folder, normalise=False, transform=None):
+        super(AusDataImg, self).__init__()
+        self.folder = folder
         self.transform = transform
+        self.normalise = normalise
 
-        mat = scipy.io.loadmat(self.file)
+        self.label_dict = {"A": 0, "B": 1, "C": 2, "D": 3}
 
-        roisfile = Path(file).with_suffix(".png")
-        file = roisfile.parent.parent / "ROIs" / roisfile.name[0] / roisfile.name
-        mask = io.imread(file)
+        self.files = list(folder.glob("*.npy"))
+        self.shape = np.load(self.files[0]).shape
 
-        [rows, cols] = np.where(mask)
-        row1 = min(rows)
-        row2 = max(rows)
-        col1 = min(cols)
-        col2 = max(cols)
-        newMask = mask[row1:row2, col1:col2]
+    def __len__(self):
+        return len(self.files)
 
-        if pad:
-            xdiff = row2 - row1
-            remainder = pad_size - xdiff
-            left = remainder // 2
-            right = remainder - left
-            ydiff = col2 - col1
-            remainder = pad_size - ydiff
-            top = remainder // 2
-            bottom = remainder - top
-            newMask = np.pad(newMask, ((left, right), (top, bottom)), "constant", constant_values=0)
+    def __getitem__(self, idx):
 
-        self.HCI = mat["HAC_Image"][0][0]["imageStruct"]["data"][0][0]
-        mask = np.repeat(newMask[:, :, np.newaxis], 70, axis=-1)
-        self.HCI = self.HCI[row1:row2, col1:col2, :] * mask
-        self.HCI = np.where(self.HCI == 0, 1, self.HCI)
+        file = self.files[idx]
+        target = self.label_dict[str(file.stem)[0]]
+        sample = np.load(file)
 
-        if normalise:
+        sample = resize(sample, (263, 263))
+
+        if self.transform:
+            self.transform(sample)
+
+        if self.normalise:
             # normalise on per channel basis
-            maxvals = np.max(self.HCI, axis=(0, 1))
-            self.HCI /= maxvals
+            sample /= np.max(sample)
 
-        self.HCI = self.HCI.reshape((self.HCI.shape[0] * self.HCI.shape[1], self.HCI.shape[2]))
-        self.HCI = self.HCI.astype(np.float32)
-        self.shape = self.HCI.shape
+        sample = torch.from_numpy(sample)
+        sample = sample.unsqueeze(0)
+        return sample, target
+
+# (A) 0%
+# (B) 100%
+# (C) 50%
+# (D) 75%
+# (E) Control
 
     def __len__(self):
         return self.HCI.shape[0]

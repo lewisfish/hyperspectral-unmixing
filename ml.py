@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -94,7 +95,53 @@ def cli_main():
     plt.show()
 
 
+def cnn_main():
+
+    # torch.autograd.set_detect_anomaly(True)
+    pl.seed_everything(1234)
+    tb_logger = pl_loggers.TensorBoardLogger('cnn_logs/')
+    trainer = pl.Trainer(logger=tb_logger, gpus=1, auto_select_gpus=True, max_epochs=30, gradient_clip_val=1.)
+
+    folder = Path("data/aus_data/expanded/")
+    dataset = customdata.AusDataImg(folder, normalise=True)
+
+    train_size = int(0.6 * len(dataset))
+    val_size = int(0.2 * len(dataset))
+    test_size = int(0.2 * len(dataset))
+
+    split_sum = train_size + val_size + test_size
+    diff = len(dataset) - split_sum
+    if diff > 0:
+        while True:
+            train_size += 1
+            diff -= 1
+            if diff == 0:
+                break
+            val_size += 1
+            diff -= 1
+            if diff == 0:
+                break
+            test_size += 1
+            diff -= 1
+            if diff == 0:
+                break
+
+    train_set, val_set, test_set = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
+
+    train_loader = DataLoader(train_set, batch_size=576, num_workers=32, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=576, num_workers=32)
+    test_loader = DataLoader(test_set, batch_size=576, num_workers=32)
+
+    model = models.SCNN(70, 4)
+    trainer.fit(model, train_loader, val_loader)
+
+    # torch.set_grad_enabled(False)
+    # model.eval()
+    # trainer.test(model, test_set)
+
+
 if __name__ == '__main__':
     plt.switch_backend('Qt5Agg')
 
-    cli_main()
+    # cli_main()
+    cnn_main()

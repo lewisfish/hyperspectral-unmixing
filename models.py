@@ -1,7 +1,12 @@
+import math
+import numpy as np
+import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.nn import init
+import torchmetrics
 
 import loss as ll
 import layers as nl
@@ -84,3 +89,95 @@ class DAN(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
+
+
+class SCNN(pl.LightningModule):
+    """docstring for SCNN"""
+    def __init__(self, input_channels, n_classes, patch_size=64):
+        super(SCNN, self).__init__()
+        self.input_channels = input_channels
+        self.n_classes = n_classes
+        self.patch_size = patch_size
+        self.features_size = 512*13*13
+
+        self.loss_func = nn.CrossEntropyLoss()
+        self.accuracy = torchmetrics.Accuracy()
+
+        self.conv1 = nn.Sequential(
+                     nn.Conv2d(1, 96, (6, 6), stride=(2, 2)),
+                     nn.BatchNorm2d(96),
+                     nn.LeakyReLU(),
+                     nn.MaxPool2d((2, 2)))
+
+        self.conv2 = nn.Sequential(
+                     nn.Conv2d(96, 256, (3, 3), stride=(2, 2)),
+                     nn.BatchNorm2d(256),
+                     nn.LeakyReLU(),
+                     nn.MaxPool2d((2, 2)))
+
+        self.conv3 = nn.Sequential(
+                     nn.Conv2d(256, 512, (3, 3), stride=(1, 1)),
+                     nn.LeakyReLU())
+
+        self.fc = nn.Sequential(
+                    nn.Linear(self.features_size, 1024),
+                    nn.LeakyReLU(),
+                    nn.Dropout(p=0.5),
+                    nn.Linear(1024, self.n_classes))
+
+        self.apply(self.weight_init)
+
+    @staticmethod
+    def weight_init(m):
+        if isinstance(m, (nn.Linear, nn.Conv3d)):
+            init.kaiming_normal_(m.weight)
+            init.zeros_(m.bias)
+
+    def training_step(self, batch, batch_idx):
+
+        loss, preds = self.shared_step(batch)
+        preds = torch.nn.functional.softmax(preds, 1)
+        self.log("loss", loss)
+        _, y = batch
+        self.log("train_acc_step", self.accuracy(preds, y))
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+
+        loss, preds = self.shared_step(batch)
+        self.log("val_loss", loss)
+        _, y = batch
+        preds = torch.nn.functional.softmax(preds, 1)
+        self.log("val_acc_step", self.accuracy(preds, y))
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss, preds = self.shared_step(batch)
+        return loss
+
+    def shared_step(self, batch):
+        x, target = batch
+        x = x.float()
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        # print(x.shape)
+        x = x.view(-1, self.features_size)
+        x_hat = self.fc(x)
+
+        loss = self.loss_func(x_hat, target)
+        return loss, x_hat
+
+    def training_epoch_end(self, outputs):
+
+        avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
+        self.logger.experiment.add_scalar("Loss/train", avg_loss, self.current_epoch)
+        self.logger.experiment.add_scalar("train_acc_epoch", self.accuracy.compute(), self.current_epoch)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
+        return optimizer
+        # optimizer = torch.optim.SGD(self.parameters(), lr=0.9, weight_decay=0.0005)
+        # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30 // 2, (5 * 30) // 6], gamma=0.1)
+        # return [optimizer], [scheduler]
