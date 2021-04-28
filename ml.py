@@ -99,45 +99,26 @@ def cnn_main():
 
     # torch.autograd.set_detect_anomaly(True)
     pl.seed_everything(1234)
-    tb_logger = pl_loggers.TensorBoardLogger('cnn_logs/')
-    trainer = pl.Trainer(logger=tb_logger, gpus=1, auto_select_gpus=True, max_epochs=30, gradient_clip_val=1.)
+    tb_logger = pl_loggers.TensorBoardLogger('cnn_logs/', default_hp_metric=False, log_graph=True)
+    trainer = pl.Trainer(logger=tb_logger, gpus=1, auto_select_gpus=True, max_epochs=10)
 
-    folder = Path("data/aus_data/expanded/")
-    dataset = customdata.AusDataImg(folder, normalise=True)
+    folder = Path("data/aus_data/3d-expanded")
+    # dataset = customdata.AusDataCube(folder, normalise=True)
+    # dataset = customdata.AusDataImg(folder, normalise=True)
 
-    train_size = int(0.6 * len(dataset))
-    val_size = int(0.2 * len(dataset))
-    test_size = int(0.2 * len(dataset))
+    batch_size = 512
+    lr = 1e-4
+    data = customdata.AusDataModule(folder, cube=True, normalise=True, batch_size=batch_size)
 
-    split_sum = train_size + val_size + test_size
-    diff = len(dataset) - split_sum
-    if diff > 0:
-        while True:
-            train_size += 1
-            diff -= 1
-            if diff == 0:
-                break
-            val_size += 1
-            diff -= 1
-            if diff == 0:
-                break
-            test_size += 1
-            diff -= 1
-            if diff == 0:
-                break
-
-    train_set, val_set, test_set = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
-
-    train_loader = DataLoader(train_set, batch_size=576, num_workers=32, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=576, num_workers=32)
-    test_loader = DataLoader(test_set, batch_size=576, num_workers=32)
-
-    model = models.SCNN(70, 4)
-    trainer.fit(model, train_loader, val_loader)
+    # model = models.SCNN(70, 2)
+    # model = models.SCNN3D(1, 2)
+    # model = models.SSNet(1, 2)
+    model = models.HybridSN(1, 2, 70, 64, lr, batch_size)
+    trainer.fit(model, data)
 
     # torch.set_grad_enabled(False)
     # model.eval()
-    # trainer.test(model, test_set)
+    # trainer.test(model, test_dataloaders=test_loader)
 
 
 if __name__ == '__main__':
